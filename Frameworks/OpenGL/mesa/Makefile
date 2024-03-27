@@ -1,0 +1,58 @@
+.include <bsd.lib.mk>
+
+LIB=            libmesa
+PACKAGE=        OpenGL
+
+CFLAGS=         --sysroot=${OBJTOP}/tmp -B${OBJTOP}/tmp/usr/bin
+CFLAGS+=        -DHAVE_DRISW_KMS -DHAVE_DRI -DHAVE_DRI2 -DHAVE_DRI3
+CFLAGS+=        -I${.CURDIR}/../wayland/src
+CFLAGS+=        -I${.CURDIR}/../wayland/egl
+CFLAGS+=        -I${MAKEOBJDIR}/../wayland/src
+CFLAGS+=        -I${.CURDIR}/../libdrm
+CFLAGS+=        -I${.CURDIR}/../libdrm/amdgpu
+CFLAGS+=        -I${.CURDIR}/../libdrm/nouveau
+CFLAGS+=        -I${.CURDIR}/../libdrm/radeon
+CFLAGS+=        -I${.CURDIR}/../libdrm/intel
+CFLAGS+=        -I${.CURDIR}/../libdrm/include/drm
+
+LDFLAGS=        -L${MAKEOBJDIR}/../wayland/src -lwayland
+LDFLAGS+=       -L${MAKEOBJDIR}/../libdrm -ldrm
+LDFLAGS+=       -Wl,-R\$$ORIGIN/Resources/
+
+MESON?=         ${OBJTOP}/tmp/usr/bin/meson
+NINJA?=         ${OBJTOP}/tmp/usr/bin/ninja
+
+all: build
+build:
+	LD_LIBRARY_PATH=${OBJTOP}/tmp/usr/lib \
+        PYTHONPATH=${OBJTOP}/tmp/usr/lib/python3.10 \
+        PATH=${OBJTOP}/tmp/usr/bin:${OBJTOP}/tmp/legacy/bin:${PATH} \
+        ${MESON} setup --reconfigure -Dprefix=${PREFIX} -Dplatforms=wayland \
+        -DSRCTOP=${SRCTOP} -Dc_args="${CFLAGS}" -Dcpp_args="${CFLAGS}" \
+        -Dc_link_args="${LDFLAGS}" -Dcpp_link_args="${LDFLAGS}" \
+        -Degl-native-platform=drm -Dgallium-drivers=auto \
+        -Dgallium-vdpau=disabled -Dvulkan-drivers="[]" -Dllvm=disabled \
+        -Dgles1=enabled -Dgles2=enabled -Dopengl=true -Dglx=disabled \
+        -Degl=enabled -Dlibunwind=disabled -Dlmsensors=disabled -Dbuild-tests=false \
+        -Dzstd=disabled -Dzlib=enabled -Dvideo-codecs=all -Ddri3=enabled \
+        -Dgbm=enabled ${MAKEOBJDIR} ${.CURDIR}
+	sed -i.bak -e 's@-I/usr/include@@g' ${MAKEOBJDIR}/build.ninja
+	${NINJA}
+
+install:
+	echo ${PACKAGE} ${LIB} ${.TARGET}
+	#${MESON} install --destdir=${DESTDIR} --no-rebuild
+
+_install-mesa-deps:
+	echo ${PACKAGE} ${.TARGET}
+	cp -vf ../wayland/src/libwayland.so.0 ../libdrm/libdrm.so.2 \
+            ../${PACKAGE}.framework/Resources/
+	ln -sf libwayland.so.0 ../${PACKAGE}.framework/Resources/libwayland.so
+	ln -sf libdrm.so.2 ../${PACKAGE}.framework/Resources/libdrm.so
+	mkdir -p meson-private
+	rm -f meson-private/Resources
+	ln -sv ${MAKEOBJDIR}/../${PACKAGE}.framework/Resources/ meson-private/Resources
+
+beforebuild: obj
+beforebuild: _install-mesa-deps
+
